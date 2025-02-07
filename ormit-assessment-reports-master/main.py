@@ -2,19 +2,23 @@ import sys
 import os
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QApplication, QWidget, QPushButton, QLineEdit, QLabel, 
+from PyQt6.QtWidgets import (QApplication, QWidget, QPushButton, QLineEdit, QLabel,
                              QGridLayout, QFileDialog, QComboBox, QMessageBox)
 from PyQt6.QtGui import QPixmap, QFont, QIcon
 from redact import *
 from prompting import *
-from write_report import *
 from time import sleep
 from global_signals import global_signals
+from write_report_mcp import clean_up
+
+# Import write_report modules (MCP and DATA)
+import write_report_mcp as mcp_write_report
+import write_report_data as data_write_report
 
 ##For debugging only:
 #print('YOU NEED TO COMMENT THIS OUT BEFORE EXE')
 #script_directory = os.path.dirname(os.path.abspath(__file__))
-#os.chdir(script_directory)  
+#os.chdir(script_directory)
 
 # Function to get the correct path for accessing resources in a bundled app
 def resource_path(relative_path):
@@ -31,8 +35,8 @@ icon_path_abs = "resources/assessmentReport.ico"
 logo_path = resource_path(logo_path_abs)
 icon_path = resource_path(icon_path_abs)
 
-programs = ['MCP', 'ICP', 'DATA']
-genders = ['M', 'F', 'X']
+programs = ['MCP', 'DATA']
+genders = ['M', 'F']
 
 class ProcessingThread(QThread):
     processing_completed = pyqtSignal(str)  # Signal to emit when processing is done
@@ -52,7 +56,13 @@ class ProcessingThread(QThread):
 
         # Convert JSON to report
         clean_data = clean_up(output_path)
-        updated_doc = update_document(clean_data, self.GUI_data["Applicant Name"], self.GUI_data["Assessor Name"], self.GUI_data["Gender"])
+        selected_program = self.GUI_data["Traineeship"]
+        if selected_program == 'MCP':
+            updated_doc = mcp_write_report.update_document(clean_data, self.GUI_data["Applicant Name"], self.GUI_data["Assessor Name"], self.GUI_data["Gender"], self.GUI_data["Traineeship"])
+        elif selected_program == 'DATA':
+            updated_doc = data_write_report.update_document(clean_data, self.GUI_data["Applicant Name"], self.GUI_data["Assessor Name"], self.GUI_data["Gender"], self.GUI_data["Traineeship"])
+        else:
+            updated_doc = mcp_write_report.update_document(clean_data, self.GUI_data["Applicant Name"], self.GUI_data["Assessor Name"], self.GUI_data["Gender"], self.GUI_data["Traineeship"]) # Default to MCP if program is not recognized
         print('Writing completed')
 
         # Emit the path of the generated document
@@ -98,18 +108,18 @@ class MainWindow(QWidget):
         layout.addWidget(pixmap_label, 0, 0, 1, 2)
 
         # OpenAI Key input
-        self.key_label = QLabel('OpenAI Key:')
+        self.key_label = QLabel('Gemini Key:')
         self.key_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.key_label, 1, 0)
-        
-        self.openai_key_input = QLineEdit(placeholderText='Enter OpenAI Key: sk-***************')
+
+        self.openai_key_input = QLineEdit(placeholderText='Enter Gemini Key: ***************')
         layout.addWidget(self.openai_key_input, 1, 1, 1, 2)
 
         # Applicant information
         self.key_label = QLabel('Applicant:')
         self.key_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.key_label, 2, 0)
-        
+
         self.applicant_name_input = QLineEdit(placeholderText='Applicant Full Name')
         layout.addWidget(self.applicant_name_input, 2, 1, 1, 2)
 
@@ -117,32 +127,32 @@ class MainWindow(QWidget):
         self.key_label = QLabel('Assessor:')
         self.key_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.key_label, 3, 0)
-        
+
         self.assessor_name_input = QLineEdit(placeholderText='Assessor Full Name')
         layout.addWidget(self.assessor_name_input, 3, 1, 1, 2)
-        
+
         # Select Gender
         cat_label = QLabel('Gender:')
         layout.addWidget(cat_label, 5, 0)
-        
+
         self.combo_title = QComboBox(self)
         for i in genders:
-            self.combo_title.addItem(i)     
+            self.combo_title.addItem(i)
         self.combo_title.currentIndexChanged.connect(lambda: self.selectionchange_traineeship(self.combo_title))
         self.combo_title.setToolTip('Select a gender')
         layout.addWidget(self.combo_title, 4, 0)
-        
+
         # Select Traineeship
         cat_label = QLabel('Traineeship:')
         layout.addWidget(cat_label, 5, 0)
-        
+
         self.combo_title2 = QComboBox(self)
         for i in programs:
-            self.combo_title2.addItem(i)     
+            self.combo_title2.addItem(i)
         self.combo_title2.currentIndexChanged.connect(lambda: self.selectionchange_traineeship(self.combo_title2))
         self.combo_title2.setToolTip('Select a traineeship')
         layout.addWidget(self.combo_title2, 5, 0)
-        
+
         # Document labels
         self.file_label1 = QLabel("No file selected", self)
         self.file_label2 = QLabel("No file selected", self)
@@ -174,7 +184,7 @@ class MainWindow(QWidget):
 
         # Counter for selected files
         self.selected_files_count = 0
-    
+
     def refresh_message_box(self, message):
         self.msg_box.setText(message)
         self.msg_box.show()
@@ -200,22 +210,22 @@ class MainWindow(QWidget):
                     self.selected_files["Cog. Test"] = selected_file
                 elif file_index == 3:
                     self.file_label3.setText(os.path.basename(selected_file))
-                    self.selected_files["Assessment Notes"] = selected_file                    
+                    self.selected_files["Assessment Notes"] = selected_file
 
                 self.selected_files_count += 1  # Increment counter for selected files
-                
+
                 # Show submit button only if all three files have been selected
                 if self.selected_files_count == 3:
-                    self.submitbtn.show() 
+                    self.submitbtn.show()
 
-    def selectionchange_traineeship(self, i):	
+    def selectionchange_traineeship(self, i):
         program_final = i.currentText()
         print("Selection changed: ", i.currentText())
 
     def handle_submit(self):
         # Gather all the data into a dictionary
         GUI_data = {
-            "OpenAI Key": self.openai_key_input.text(),
+            "Gemini Key": self.openai_key_input.text(),  # Corrected key name to "Gemini Key"
             "Applicant Name": self.applicant_name_input.text(),
             "Assessor Name": self.assessor_name_input.text(),
             "Gender": self.combo_title.currentText(),
@@ -226,7 +236,7 @@ class MainWindow(QWidget):
                 "Assessment Notes": self.selected_files.get("Assessment Notes", "")
             }
         }
-               
+
         # Start the processing thread
         self.processing_thread = ProcessingThread(GUI_data)
         self.processing_thread.processing_completed.connect(self.on_processing_completed)
