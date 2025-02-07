@@ -1,0 +1,642 @@
+
+import os
+import sys
+from datetime import datetime
+from docx import Document
+from docx.shared import Pt, Inches, RGBColor
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+import ast
+import json
+import re
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and PyInstaller."""
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+### Initial clean:
+def clean(text):
+    """Cleans input text by removing unwanted patterns."""
+    if not text or isinstance(text, list):
+        return text
+    if isinstance(text, str):
+        cleaned_text = re.sub(r'\【.*?\】', '', text).strip()
+        cleaned_text = cleaned_text.replace("```python", "")
+        cleaned_text = cleaned_text.replace("```", "")
+        cleaned_text = cleaned_text.replace("**", "")
+        cleaned_text = strip_extra_quotes(cleaned_text)
+        return cleaned_text
+    return text # Added return for non-string inputs
+
+
+def strip_extra_quotes(input_string):
+    """Removes leading/trailing double quotes from a string."""
+    if input_string.startswith('"') and input_string.endswith('"'):
+        return input_string[1:-1]
+    return input_string
+
+
+#######################  Actual Work  ##########################
+def clean_up():
+    """Loads data from JSON and cleans it."""
+    loc_dic = '1.json'  # Hardcoded input file name as requested
+    try:
+        with open(loc_dic, 'r', encoding='utf-8') as json_file:  # Specify encoding
+            loaded_data = json.load(json_file)
+    except FileNotFoundError:
+        print(f"Error: Could not find file: {loc_dic}")
+        return {}  # Return empty dict in case of failure
+
+    results_list = {}
+    for key, value in loaded_data.items():
+        results_list[key] = clean(value)
+    return results_list
+
+
+### Put it in Word:
+# Icons
+template = resource_path('resources/Assessment_report_Data_chiefs.docx')
+image_path_improv = resource_path("resources/improvement.png")
+image_path_average = resource_path("resources/average.png")
+image_path_strong = resource_path("resources/strong.png")
+
+
+def update_document(output_dic, name, assessor, gender, program):
+    """Main function to update the Word document with processed data."""
+    doc = Document(template)
+
+    ### CONTENT
+    # Personal details
+    add_content_detailstable(doc, [name, "", program, "", ""])  # Program added here
+    replace_and_format_header_text(doc, name)
+    replace_placeholder_in_docx(doc, '***', name.split()[0], font_name='Montserrat Light')
+
+    # Add assessor
+    replace_placeholder_in_docx(doc, 'ASSESSOR', assessor.upper(), font_name='Montserrat Light')
+
+    # First impression
+    if "prompt2_firstimpr" in output_dic and output_dic['prompt2_firstimpr']:
+        firstimpr_pietless = replacePiet(output_dic['prompt2_firstimpr'], name, gender)
+        add_content_below_heading(doc, "First impression", firstimpr_pietless, "First impression")
+
+    # Personality
+    if "prompt3_personality" in output_dic and output_dic['prompt3_personality']:
+        personality_pietless = replacePiet(output_dic['prompt3_personality'], name, gender)
+        add_content_below_heading(doc, "Personality", personality_pietless, "Personality")
+
+    # Cognitive Capacity Test results
+    if "prompt4_cogcap_scores" in output_dic and output_dic['prompt4_cogcap_scores']:
+        add_content_cogcaptable(doc, output_dic['prompt4_cogcap_scores'])
+
+    if "prompt4_cogcap_remarks" in output_dic and output_dic['prompt4_cogcap_remarks']:
+        add_content_cogcaptable_remark(doc, output_dic['prompt4_cogcap_remarks'])
+
+    # Language Skills
+    if "prompt5_language" in output_dic and output_dic['prompt5_language']:
+        language_skills(doc, output_dic['prompt5_language'])
+
+    # Conclusion columns
+    if "prompt6a_conqual" in output_dic and output_dic['prompt6a_conqual']:
+        conclusion(doc, 0, output_dic['prompt6a_conqual'])
+    if "prompt6b_conimprov" in output_dic and output_dic['prompt6b_conimprov']:
+        conclusion(doc, 1, output_dic['prompt6b_conimprov'])
+
+    # Profile review
+    if 'prompt7_qualscore_data' in output_dic and output_dic['prompt7_qualscore_data']:
+        qual_scores = ast.literal_eval(output_dic['prompt7_qualscore_data'])
+        human_skills_scores = qual_scores[:18]  # First 20 for Human Skills
+        technical_skills_scores = qual_scores[18:23]  # Remaining for Technical Skills
+
+        add_icons_data_chief(doc, human_skills_scores)
+        add_icons_data_chief_2(doc, technical_skills_scores)
+
+    # Data tools
+    if 'prompt8_datatools' in output_dic and output_dic['prompt8_datatools']:
+        data_tools_scores = ast.literal_eval(output_dic['prompt8_datatools'])
+        add_icons_data_tools(doc, data_tools_scores)
+
+    # Interests
+    if "prompt9_interests" in output_dic and output_dic['prompt9_interests']:
+        interests_string = output_dic['prompt9_interests']
+        add_interests_table(doc, interests_string)
+
+    # Save the document
+    current_time = datetime.now()
+    formatted_time = current_time.strftime("%m%d%H%M")
+    updated_doc_path = f"Assessment Report - {name} - {formatted_time}.docx"
+    doc.save(updated_doc_path)
+    os.startfile(updated_doc_path)
+    return updated_doc_path
+
+
+def format_datatools_output(datatools_json_string):
+    """Formats data tools output from JSON string."""
+    try:
+        datatools_dict = ast.literal_eval(datatools_json_string)
+        formatted_text = ""
+        for tool, level in datatools_dict.items():
+            formatted_text += f"- {tool}: {level}\n"
+        return formatted_text.strip()
+    except (ValueError, SyntaxError):
+        return "Could not parse data tools information."
+
+
+def format_interests_output(interests_json_string):
+    """Formats interests output from JSON string."""
+    try:
+        interests_list = ast.literal_eval(interests_json_string)
+        formatted_text = ""
+        for interest in interests_list:
+            formatted_text += f"- {interest}\n"
+        return formatted_text.strip()
+    except (ValueError, SyntaxError):
+        return "Could not parse interests information."
+
+
+def replacePiet(text, name, gender):
+    """Replaces 'Piet' and handles gender-specific pronouns."""
+    text = text.replace("Piet", name.split()[0])
+    text = re.sub(r'\bthe trainee\b', name.split()[0], text, flags=re.IGNORECASE)
+
+    if gender == 'M':
+        replacements = {
+            "She": "He", "she": "he", "Her": "Him", "her": "him",
+            "Hers": "His", "hers": "his", "Herself": "Himself", "herself": "himself"
+        }
+    elif gender == 'F':
+        replacements = {
+            "He": "She", "he": "she", "Him": "Her", "him": "her",
+            "His": "Her", "his": "her", "Himself": "Herself", "himself": "herself"
+        }
+    else:
+        return text # Return original text if gender is unknown
+
+    for female, male in replacements.items():
+      text = re.sub(r'\b' + re.escape(female) + r'\b', male, text)
+    return text
+
+
+def restructure_date(date_str):
+    """Restructures date string to DD-MM-YYYY format."""
+    date_str = date_str.replace('/', '-')
+
+    try:
+        datetime.strptime(date_str, '%d-%m-%Y')
+        return date_str
+    except ValueError:
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            return date_obj.strftime('%d-%m-%YYYY') # Corrected to YYYY instead of YY
+        except ValueError:
+            return ''
+
+
+def set_font_properties(cell):
+    """Sets font properties for a table cell."""
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.name = 'Montserrat Light'
+            run.font.size = Pt(11)
+
+            r = run._element
+            rPr = r.rPr
+            if rPr is None:
+                rPr = OxmlElement('w:rPr')
+                r.append(rPr)
+
+            rFonts = OxmlElement('w:rFonts')
+            rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ascii', 'Montserrat Light')
+            rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hAnsi', 'Montserrat Light')
+            rPr.append(rFonts)
+
+
+def set_font_properties2(para):
+    """Sets custom font properties for a paragraph with specific tab spacing."""
+    full_text = para.text
+    para.clear()
+
+    lines = full_text.splitlines()
+
+    for line in lines:
+        words = line.split()
+        if words:
+            for word in words[:-1]:
+                run = para.add_run(word + ' ')
+                run.font.name = 'Montserrat Light'
+                run.font.size = Pt(10)
+                run.bold = False
+                r = run._element
+                rPr = r.rPr
+
+                if rPr is None:
+                    rPr = OxmlElement('w:rPr')
+                    r.append(rPr)
+
+                rFonts = OxmlElement('w:rFonts')
+                rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ascii', 'Montserrat Light')
+                rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hAnsi', 'Montserrat Light')
+                rPr.append(rFonts)
+
+            if words[0] == 'Dutch':
+                para.add_run('\t\t')
+            else:
+                para.add_run('\t')
+
+            last_word = words[-1]
+            last_run = para.add_run(last_word)
+            last_run.font.name = 'Montserrat Light'
+            last_run.font.size = Pt(10)
+            last_run.bold = True
+            r = last_run._element
+            rPr = r.rPr
+
+            if rPr is None:
+                rPr = OxmlElement('w:rPr')
+                r.append(rPr)
+
+            rFonts = OxmlElement('w:rFonts')
+            rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ascii', 'Montserrat Light')
+            rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hAnsi', 'Montserrat Light')
+            rPr.append(rFonts)
+
+
+def add_content_detailstable(doc, personal_details):
+    """Adds personal details to the first table."""
+    if len(personal_details) == 1 and all(isinstance(ele, str) for ele in personal_details):
+        personal_details = personal_details[0].split(',')
+
+    table = doc.tables[0]
+
+    if personal_details:  # Check if personal_details has data
+        for row in table.rows:
+            if len(row.cells) > 1:
+                first_cell_text = row.cells[0].text.strip()
+                second_cell_text = row.cells[1].text.strip()
+
+                if first_cell_text == "Name candidate" and second_cell_text == ":":
+                    cell = row.cells[2]
+                    cell.text = personal_details[0]
+                    set_font_properties(cell)
+
+                if first_cell_text == "Date of birth" and second_cell_text == ":":
+                    cell = row.cells[2]
+                    cell.text = restructure_date(personal_details[1]) if len(personal_details) > 1 else ''
+                    set_font_properties(cell)
+
+                if first_cell_text == "Position" and second_cell_text == ":":
+                    cell = row.cells[2]
+                    cell.text = personal_details[2] if len(personal_details) > 2 else ''
+                    set_font_properties(cell)
+
+                if first_cell_text == "Assessment date" and second_cell_text == ":":
+                    cell = row.cells[2]
+                    cell.text = restructure_date(personal_details[3]) if len(personal_details) > 3 else ''
+                    set_font_properties(cell)
+
+                if first_cell_text == "Pool" and second_cell_text == ":":
+                    cell = row.cells[2]
+                    cell.text = personal_details[4] if len(personal_details) > 4 else ''
+                    set_font_properties(cell)
+    return
+
+
+def add_content_below_heading(doc, heading, content, heading_name=None):
+    """Adds content below a specified heading, preserving formatting."""
+    paragraphs = content.strip().split('\n\n')
+
+    for paragraph in doc.paragraphs:
+        if heading in paragraph.text:
+            for run in paragraph.runs:
+                if run.bold:
+                    new_paragraphs = []
+                    for index, para in enumerate(paragraphs):
+                        if index > 0:
+                            para = '\t' + para.strip()
+                        else:
+                            para = para.strip()
+
+                        new_paragraphs.append(para)
+
+                    inserted_paragraphs = []
+                    for new_para in reversed(new_paragraphs):
+                        new_paragraph = doc.add_paragraph(new_para)
+                        doc._element.body.insert(doc._element.body.index(paragraph._element) + 1, new_paragraph._element)
+                        inserted_paragraphs.append(new_paragraph)
+
+                        run = new_paragraph.runs[0]
+                        run.font.name = 'Montserrat Light'
+                        run.font.size = Pt(10)
+
+                        r = run._element
+                        rPr = r.rPr
+                        if rPr is None:
+                            rPr = OxmlElement('w:rPr')
+                            r.append(rPr)
+
+                        rFonts = OxmlElement('w:rFonts')
+                        rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ascii', 'Montserrat Light')
+                        rFonts.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hAnsi', 'Montserrat Light')
+                        rPr.append(rFonts)
+    if heading_name == "First impression":
+        for inserted_para in inserted_paragraphs:
+            if "{Insert a description of the person’s first impression}" in inserted_para.text:
+                inserted_para.text = inserted_para.text.replace("{Insert a description of the person’s first impression}", "").strip()
+    if heading_name == "Personality":
+        for inserted_para in inserted_paragraphs:
+            if "{prompt3}" in inserted_para.text: #Adjusted to match template's actual placeholder
+                inserted_para.text = inserted_para.text.replace("{prompt3}", "").strip() #Adjusted to match template's actual placeholder
+    return
+
+
+def add_content_cogcaptable(doc, scores):
+    """Adds cognitive capacity scores to the table."""
+    if isinstance(scores, str):
+        scores = scores.replace("```python", "").replace("```", "").strip()
+        scores = ast.literal_eval(scores)
+
+    if isinstance(scores, list):
+        table = doc.tables[1]
+
+        for i in range(6):
+            cell = table.rows[1].cells[i + 1]
+            if i == 0:
+                paragraph = cell.add_paragraph()
+                run = paragraph.add_run(str(scores[i]))
+                run.bold = True
+                run.underline = True
+                run.font.name = 'Montserrat Light'
+                run.font.size = Pt(11)
+                paragraph.alignment = 1
+            else:
+                cell.text = str(scores[i])
+                set_font_properties(cell)
+                for paragraph in cell.paragraphs:
+                    paragraph.alignment = 1
+
+
+def add_content_cogcaptable_remark(doc, cogcap_output):
+    """Adds remarks to the cognitive capacity table."""
+    if isinstance(cogcap_output, str):
+        cogcap_output = cogcap_output.replace("```", "").strip()
+        remark_text = cogcap_output
+    else:
+        return
+
+    table = doc.tables[1]
+    remark_cell = table.rows[2].cells[1]
+
+    for paragraph in remark_cell.paragraphs:
+        p = paragraph._element
+        p.getparent().remove(p)
+
+    # Add the full remark text
+    paragraph = remark_cell.add_paragraph()
+    run = paragraph.add_run(remark_text)
+    run.font.name = 'Montserrat Light'
+    run.font.size = Pt(10)
+    return
+
+
+def language_skills(doc, replacements_str):
+    """Fills in language skills levels in the Language Skills table."""
+    replacements = []
+    if replacements_str and isinstance(replacements_str, str):
+        try:
+            replacements = ast.literal_eval(replacements_str)
+        except (SyntaxError, ValueError) as e:
+            print(f"Error parsing replacements string: {e}")
+            print("Please ensure the replacements string is a valid Python list string, e.g., '[\"C2\", \"A1\", \"C1\"]'")
+            return
+
+    if not isinstance(replacements, list):
+        print("Error: Replacements is not a list after parsing.")
+        return
+
+    table_index = 14  # Index of the Language Skills table (Table 7 in document, 0-indexed)
+    try:
+        table = doc.tables[table_index]
+    except IndexError:
+        print(f"Error: Language Skills table not found at index {table_index}.")
+        return
+
+    language_names = ["Dutch", "French", "English"]
+
+    for index, language_name in enumerate(language_names):
+        if index < len(replacements):
+            proficiency_level = replacements[index]
+            try:
+                cell = table.cell(index + 2, 0) # Row index starts from 1 (skip header), column 1 is Proficiency Level
+                cell.text = proficiency_level
+                set_font_properties(cell)
+            except IndexError:
+                print(f"Warning: Could not access cell for {language_name} in Language Skills table.")
+        else:
+            print(f"Warning: No proficiency level provided for {language_name}.")
+
+
+
+def add_icons_data_chief(doc, list_scores):
+    """Adds icons to Human Skills tables, handling variable row counts and 'AA' placeholders."""
+    if isinstance(list_scores, str):
+        list_scores = ast.literal_eval(list_scores)
+
+    if isinstance(list_scores, list):
+        table_no_start = 4  # Start from the first Human Skills table (Document Table 4, index 3)
+        score_index = 0
+
+        for table_no_offset in range(5):  # Loop through the first 6 Human Skills tables (adjust range if more tables)
+            table_no = table_no_start + table_no_offset
+            if table_no < len(doc.tables):
+                table = doc.tables[table_no]
+
+                for row_no in range(1, len(table.rows)): # Start from row 1 to skip header
+                    if score_index < len(list_scores): # Check if scores are remaining
+                        if len(table.rows[row_no].cells) > 0:
+                            cell = table.rows[row_no].cells[0]
+                            if cell.text.strip().startswith("AA"): # Check for 'AA' at the start of cell content
+                                add_icon_to_cell(cell, list_scores[score_index])
+                                score_index += 1
+                        else:
+                            pass
+                    else:
+                        return  # Exit if all scores are processed
+            else:
+                return # Exit if table index is out of range
+    return
+
+
+def add_icons_data_chief_2(doc, list_scores):
+    """Adds icons to Technical Skills tables, handling variable row counts and 'AA' placeholders."""
+    if isinstance(list_scores, str):
+        list_scores = ast.literal_eval(list_scores)
+
+    if isinstance(list_scores, list):
+        table_no_start = 9  # Start from the first Technical Skills table (Document Table 10, index 9)
+        score_index = 0
+
+        for table_no_offset in range(5):  # Loop through Technical Skills tables (adjust range if more tables)
+            table_no = table_no_start + table_no_offset
+            if table_no < len(doc.tables):
+                table = doc.tables[table_no]
+
+                for row_no in range(1, len(table.rows)): # Start from row 1 to skip header
+                    if score_index < len(list_scores): # Check if scores are remaining
+                        if len(table.rows[row_no].cells) > 0:
+                            cell = table.rows[row_no].cells[0]
+                            if cell.text.strip().startswith("AA"): # Check for 'AA' at start of cell content
+                                add_icon_to_cell(cell, list_scores[score_index])
+                                score_index += 1
+                        else:
+                             pass
+                    else:
+                        return  # Exit if all scores are processed
+            else:
+                return # Exit if table index is out of range
+    return
+
+
+def add_icons_data_tools(doc, list_scores): # New function for Data Tools
+    if isinstance(list_scores, str):
+        list_scores = ast.literal_eval(list_scores)
+
+    if isinstance(list_scores, list):
+        items_per_table = 5 # Number of items per table for Data Tools section, based on user info for 5 data rows to fill
+        table_no_start = 15  # Table number where the icons for Data Tools START - Tables are 0-indexed in code, and start counting from table 13 in document. so 13-1=12
+
+        for i in range(len(list_scores)):
+            table_no = table_no_start + (i // items_per_table)  # Table number increments every items_per_table
+            row_no = (i % items_per_table)  # Row number from 0 to items_per_table-1 for each table (0-4 for 5 data rows)
+
+            if table_no < len(doc.tables): # Check if table_no is within the range of available tables (using < instead of <= because tables are 0-indexed)
+                table = doc.tables[table_no] # Tables are 0-indexed in doc.tables
+
+                # Target row_no + 1 to skip the header and explanation rows (rows 0 and 1)
+                target_row_index = row_no + 2 # Adjusted to target row 2 (index 1) for the first data row
+                if target_row_index < len(table.rows):
+                    if len(table.rows[target_row_index].cells) > 0:
+                        cell = table.rows[target_row_index].cells[0]
+                        add_icon_to_cell(cell, list_scores[i]) # Use helper function to add icon
+                    else:
+                        pass
+                else:
+                    pass
+            else:
+                pass
+    return
+
+
+def add_icon_to_cell(cell, score):
+    """Adds an icon based on the score to a cell."""
+    for paragraph in cell.paragraphs:
+        paragraph.clear()
+        p = paragraph._element
+        p.getparent().remove(p)
+
+    run = cell.add_paragraph().add_run()
+    if score == -1:
+        run.add_picture(image_path_improv, width=Inches(.3))
+    elif score == 0:
+        run.add_picture(image_path_average, width=Inches(.3))
+    elif score == 1:
+        run.add_picture(image_path_strong, width=Inches(.3))
+
+def add_interests_table(doc, interests_text):
+    """Fills in interests into the Interests Table, similar to conclusion function."""
+    table_index = 16  # Index of the Interests Table (Table 16 in document, 0-indexed)
+    try:
+        table = doc.tables[table_index]
+    except IndexError:
+        print(f"Error: Interests table not found at index {table_index}.")
+        return
+
+    # Split interests text into a list of items (assuming comma-separated)
+    list_items = [item.strip() for item in interests_text.split(',')]
+
+    # Clear existing content rows (skip header row)
+    for row_index in reversed(range(1, len(table.rows))): # Iterate in reverse to safely remove rows
+        if row_index > 0: # avoid deleting header row
+            table.rows[row_index]._element.getparent().remove(table.rows[row_index]._element)
+
+    for point in list_items:
+        new_row_cells = table.add_row().cells
+        cell = new_row_cells[0] # Get the first cell in the row
+
+        # Clear existing paragraphs in the cell (although it should be empty in a new row)
+        for paragraph in cell.paragraphs:
+            p = paragraph._element
+            p.getparent().remove(p)
+
+        paragraph = cell.add_paragraph()
+        text_run = paragraph.add_run(point)
+        text_run.font.name = 'Montserrat Light'
+        text_run.font.size = Pt(10)
+
+
+def conclusion(doc, column, list_items):
+    """Adds conclusion bullet points to the specified column."""
+    if isinstance(list_items, str):
+        list_items = ast.literal_eval(list_items)
+
+    table = doc.tables[2]
+    cell = table.rows[1].cells[column]
+
+    for paragraph in cell.paragraphs:
+        p = paragraph._element
+        p.getparent().remove(p)
+
+    for point in list_items:
+        paragraph = cell.add_paragraph()
+        text_run = paragraph.add_run(f'\t -{point}')  # Add the text after the bullet
+        text_run.font.name = 'Montserrat Light'
+        text_run.font.size = Pt(10)
+
+
+# Last style improvements
+def replace_and_format_header_text(doc, new_text):
+    """Replaces header text and formats it."""
+    for section in doc.sections:
+        header = section.header
+        for paragraph in header.paragraphs:
+            if '***' in paragraph.text:
+                paragraph.text = paragraph.text.replace('***', new_text)
+
+                for run in paragraph.runs:
+                    run.font.name = 'Montserrat SemiBold'
+                    run.font.size = Pt(10)
+                    run.font.color.rgb = RGBColor(*(0xED, 0x6B, 0x55))
+                    run.bold = True
+                    run.italic = False
+
+                    rFonts = OxmlElement('w:rFonts')
+                    rFonts.set(qn('w:ascii'), 'Montserrat SemiBold')
+                    rFonts.set(qn('w:hAnsi'), 'Montserrat SemiBold')
+                    run._element.rPr.append(rFonts)
+
+
+def replace_placeholder_in_docx(doc, placeholder, replacement, font_name='Montserrat', font_size=10):
+    """Replaces a placeholder in the document with custom font."""
+    for paragraph in doc.paragraphs:
+        if placeholder in paragraph.text:
+            inline = paragraph.runs
+            for i in range(len(inline)):
+                if placeholder in inline[i].text:
+                    inline[i].text = inline[i].text.replace(placeholder, replacement)
+                    inline[i].font.name = font_name
+                    inline[i].font.size = Pt(font_size)
+
+def open_file(file_path):
+    """Opens file based on OS."""
+    if os.name == 'nt':
+        os.startfile(file_path)
+    elif os.name == 'posix':
+        os.system(f'open "{file_path}"')
+
+
+if __name__ == "__main__":
+    cleaned_output = clean_up()
+    updated_doc_path = update_document(cleaned_output, "Pietje Testpersoon", "Jan de Assessor", "M", "Data Program")
+    print(f"Document updated and saved at: {updated_doc_path}")
