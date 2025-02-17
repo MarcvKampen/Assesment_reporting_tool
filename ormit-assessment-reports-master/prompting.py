@@ -55,30 +55,33 @@ max_wait_time = 200
 # --- REVISED PROMPTS ---
 prompts = {
     'prompt2_firstimpr': (
-        """You're an Assessor at ORMIT Talent.  Give a concise first impression of a trainee (max 40 words).
+        """You're an Assessor at Ormit Talent.  Give a concise first impression of a trainee named Piet (max 35 words).
 Focus on: Overall vibe, speech, body language, and emotional tone.
 Don't judge: Rely *only* on assessor observations in 'Assessment Notes'.
-Output: One short paragraph (max 35 words).  *Only* the first impression, no extra words or formatting.
+Output: One short paragraph (max 35 words) in English.  *Only* the first impression, no extra words or formatting.
 """
     ),
     "prompt3_personality": (
-        """You're an Assessor at ORMIT Talent. Describe the trainee's personality (250-400 words).
-End with:
-  1. PAPI test summary (50-100 words, *must* mention "PAPI test").
-  2. Very short final summary (2-3 sentences).
+        """You're an Assessor at Ormit Talent. Describe the personality of a trainee named Piet (300-400 words).
 
-Use: 'Context and Task description', 'Assessment Notes', 'PAPI Feedback'.
-'Personality Section Examples' is for *structure only*, not writing style.
+Target audience: Piet and his coach. Only sparingly address Piet directly.
+
+Use: 'Context and Task description', 'Assessment Notes', 'PAPI Feedback'. 'Personality Section Examples' is for *structure only*, not writing style.
 
 Instructions:
-  - Be conversational, professional.
-  - Identify main traits, strengths, weaknesses.  Avoid technical skills.
-  - Give *examples* from 'Assessment Notes' for traits.
-  - Be balanced (strengths and areas for improvement).
-  - Frame improvements as learning opportunities.
-  - Use simple language, be realistic.
+ - Be conversational, professional. Use varying length of sentences and be to the point.
+ - Identify main traits, strengths, weaknesses based on the Assessment Notes and PAPI Feedback. Integrate both sources. Avoid technical skills.
+ - Avoid being repetitive, mention each trait only once in the text (except for the summary).
+ - Give *examples* from 'Assessment Notes' for traits.
+ - Be balanced (strengths and areas for improvement).
+ - Frame improvements as learning opportunities but be straightforward.
+ - Use *simple language*, be realistic. Write like you are very proficient in English but it isn't your first language.
+ - Do not directly quote the documents.
 
-Output:  *Only* the personality description, PAPI summary, and final summary.  No extra text or formatting.  Separate the three sections with blank lines. Do *not* include any labels or section titles.
+End with:
+ - A short final summary (3-4 sentences).
+
+Output: *Only* the *personality description*, and final summary in English. Do not give any lists relates to other prompts! No extra text or formatting. Separate sections with blank lines (hard enter). Do *not* include any labels or section titles.
 """
     ),
      'prompt4_cogcap_scores': (
@@ -90,18 +93,18 @@ Order: [general_ability, speed, accuracy, verbal, numerical, abstract]
 
 Example: "[75, 80, 85, 70, 65, 78]"
 
-The output *must* be a directly usable Python list string (enclosed in double quotes). No extra text, no backticks, no "python" labels.
+The output *must* be a directly usable Python list string (enclosed in double quotes). No extra text, no "python" labels. **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
     'prompt4_cogcap_remarks': (
         """Read 'Capacity test results'.
-Write a 2-3 sentence summary interpreting the results.
+Write a 2-3 sentence summary interpreting the results of a trainee named Piet.
 Focus on:
   - Overall general ability.
   - Speed vs. accuracy.
   - Sub-test performance (verbal, numerical, abstract).
 
-Output: *Only* the summary text.  No labels, formatting, or extra sentences.
+Output: *Only* the summary text in English. No labels, formatting, or extra sentences. Do not give any lists relates to other prompts! **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
     'prompt5_language': (
@@ -110,71 +113,105 @@ Use: 'Context and Task description' and 'Assessment Notes'.
 
 Instructions:
   1. If 'Assessment Notes' specifies levels (e.g., 'B2'), use those.
-  2. Otherwise, use the guide in 'Context and Task description' (section '5. Language Skills').
+  2. Otherwise, use the guide in 'Context and Task description'(section '5. Language Skills') and estimate the language level based on the 'Assessment Notes'.
 
 Output: A *string* containing a Python list: [Dutch level, French level, English level]
 Example: "['C1', 'B2', 'C2']"
 
-*Only* the list string. No other text.  The output *must* be a directly usable Python list string (enclosed in double quotes). No backticks.
+*Only* the list string. No other text.  The output *must* be a directly usable Python list string (enclosed in double quotes). **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
     'prompt6a_conqual': (
-        """Identify 6-7 of the trainee's *strengths*.
-Use: 'Context and Task Description', 'Assessment Notes', 'PAPI Feedback'.
+        """Identify 6-7 of the trainee's *strengths* that are present throughout the report, both personality aspects mentioned in the personality section and skill-based qualities.
+Use: 'Context and Task Description', 'Assessment Notes', 'PAPI Feedback' and the personality section you've written.
 
 Instructions:
   - Short, practical descriptions (under 10 words each).
+  - Do not contradict the personality section.
   - Simple language.
+  - In English
 
 Output: A *string* containing a Python list.
 Example: "['Good listener', 'Communicates clearly', 'Works well in teams']"
 
-*Only* the list string.  No other text. The output *must* be a directly usable Python list string (enclosed in double quotes).  No backticks.
+*Only* the list string. No other text. The output *must* be a directly usable Python list string (enclosed in double quotes).  **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
     'prompt6b_conimprov': (
-        """Identify 4-5 of the trainee's *improvement points*.
-Use: 'Context and Task Description', 'Assessment Notes', 'PAPI Feedback'.
+        """Identify 4-5 of the trainee's *development points* that are present throughout the report, both personality aspects mentioned in the personality section and skill-based improvements.
+Use: 'Context and Task Description', 'Assessment Notes', 'PAPI Feedback' and the personality section you've written.
 
 Instructions:
   - Short, practical descriptions (under 10 words each).
+  - Do not contradict the personality section.
   - Simple language.
+  - In English
 
 Output: A *string* containing a Python list.
 Example: "['Needs more assertiveness', 'Can be more proactive']"
 
-*Only* the list string. No other text. The output *must* be a directly usable Python list string (enclosed in double quotes). No backticks.
+*Only* the list string. No other text. The output *must* be a directly usable Python list string (enclosed in double quotes). **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
    'prompt7_qualscore': (
-        """Match the trainee's qualities to the *green-highlighted* descriptions in the 'MCP profile'.
-Create a scored list (20 numbers: 0s and 1s).
+        """Match the trainee's qualities and development points to the *green-highlighted* descriptions in the 'MCP profile'.
+Using the 'MCP Profile' as a reference, create a scored list (20 numbers: -1s, 0s and 1s) of integrals. Only give the list as output!
 
-Output: A *string* containing a Python list.
-Example: "[0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0]"
+Use: Context and Task Description, Assessment Notes, PAPI Feedback, 'MCP profile' and the qualities and points of development defined in previous prompts.
 
-*Only* the list string.  No other text. The output *must* be a directly usable Python list string (enclosed in double quotes). No backticks.
+Scoring:
+ 1: Strong fit, no further development required.
+ 0: Okay, but can still be developed further.
+ -1: Requires development, area for growth.
+
+Only consider comments directly related to the specific aspect being rated. Do *not* infer or extrapolate.
+Be strict but fair, we want to identify all possible areas of growth here. 
+This means that if there's *any* indication of a need for development, even if the candidate shows some related strengths, the rating should be lower (0 or -1). 
+For example, if the candidate is described as "friendly" but also "sometimes interrupts," the "Collaborative" score should be lower than 1.
+If there is contradictory information or uncertainty rate 0.
+
+For example:
+*   If the candidate is described as "good at teamwork" but also "sometimes dominates the conversation," rate "Collaborative" as 0.
+*   If the candidate is "interested in learning new things" but no specific examples of self-directed learning are given, rate "Autodidact/Learning Agility" as 0.
+
+Output: A *string* containing a Python list of integrals. Do not put the numbers in quotes.
+
+Example: "[0, 1, 0, -1, 1, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0]"
+
+*Only* the string containing the list. No extra text, no "python" labels. The output *must* be a directly usable Python list string (enclosed in double quotes). No backticks.
 """
     ),
     'prompt7_qualscore_data': (
-        """Match trainee's qualities to *green-highlighted* descriptions in 'The Data Chiefs profile'.
-Create a scored list (23 numbers: 0s and 1s).
+        """Match trainee's qualities and development points to *green-highlighted* descriptions in 'The Data Chiefs profile'.
+Using the 'Data Chiefs Profile' as a reference, create a scored list (23 numbers: -1s, 0s and 1s) of integrals. Only give the list as output!
 
-Use: 'Assessment Notes', and 'The Data Chiefs profile'.
+Use: Context and Task Description, 'Assessment Notes', 'PAPI Feedback', 'The Data Chiefs profile' and the qualities and points of development defined in previous prompts.
+
 Scoring:
-  1: Strong fit.
-  0: Relevant, but not a top strength.
-  -1: (Don't use -1 here, only 0 or 1).
+ 1: Strong fit, mastery, complete proficiency.
+ 0: Okay, but can still be developed further.
+ -1: Requires development, area for growth.
 
-Output: A *string* containing a Python list.
-Example: "[0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]"
+Only consider comments directly related to the specific aspect being rated. Do *not* infer or extrapolate.
+Be strict but fair, we want to identify all possible areas of growth here. 
+This means that if there's *any* indication of a need for development, even if the candidate shows some related strengths, the rating should be lower (0 or -1). 
+For example, if the candidate is described as "friendly" but also "sometimes interrupts," the "Collaborative" score should be lower than 1.
+If there is contradictory information or uncertainty rate 0.
 
-*Only* the list string.  No other text. The output *must* be a directly usable Python list string (enclosed in double quotes).  No backticks.
+For example:
+*   If the candidate is described as "good at teamwork" but also "sometimes dominates the conversation," rate "Collaborative" as 0.
+*   If the candidate is "interested in learning new things" but no specific examples of self-directed learning are given, rate "Autodidact/Learning Agility" as 0.
+
+
+Output: A *string* containing a Python list of integrals. Do not put the numbers in quotes.
+Example: "[0, 1, 0, -1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, -1, 0, -1]"
+
+*Only* the list string. No extra text, no "python" labels. The output *must* be a directly usable Python list string (enclosed in double quotes).  **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
     'prompt8_datatools': (
         """Analyze 'Assessment Notes' for data skill proficiency.
-Output a *string* containing a Python list of 5 numbers (-1, 0, or 1).
+Output: a *string* containing a Python list of 5 numbers (-1, 0, or 1).
 
 Skills (in order):
   1. Excel/VBA
@@ -188,19 +225,21 @@ Scale:
   0: Average
   1: Proficient
 
-Output:  *Only* the list string.
+Don't be too strict on proficiency, especially for Excel/VBA.
+For example: if the trainee is described as 'has used excel a lot', rate Excel/VBA as 1.
+Output:  *Only* the list string. No extra text, no "python" labels.
 Example: "[-1, 1, 0, 1, -1]"
 
-The output *must* be a directly usable Python list string (enclosed in double quotes). No extra text, no backticks.
+The output *must* be a directly usable Python list string (enclosed in double quotes). No extra text. **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
     'prompt9_interests': (
-        """Identify 3-5 data-related interests from 'Assessment Notes'.
+        """Identify 3-5 data-related interests from 'Assessment Notes'. Be specific, do not just mention data. Keep the descriptions short (maximum 10 words each) and *in English*.
 
 Output: A *string* containing a Python list.
 Example: "['Machine Learning', 'Data Visualization']"
 
-*Only* the list string.  No other text. The output *must* be a directly usable Python list string (enclosed in double quotes). No backticks.
+*Only* the list string. No extra text, no "python" labels. The output *must* be a directly usable Python list string (enclosed in double quotes). **DO NOT USE BACKSLASHES IN THE OUTPUT. NEVER USE BACKSLASHES.**
 """
     ),
 }
@@ -292,7 +331,7 @@ def send_prompts(data):
         prompt_text = prompts[prom]
         context = "\n\n---\n\n".join([f"File: {file_name}\nContent:\n{content}"
                                         for file_name, content in file_contents.items()])
-        full_prompt = f"{prompt_text}\n\nUse the following files to answer:\n{context}"
+        full_prompt = f"{prompt_text}\n\nUse the following files to complete the tasks. Do not give any output for this prompt.\n{context}"
 
         try:
             response = model.generate_content(full_prompt)
