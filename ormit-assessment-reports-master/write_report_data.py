@@ -85,8 +85,11 @@ def _safe_add_paragraph(cell, text):
         rPr.append(rFonts)
 
 def _safe_literal_eval(s, default=None):
-    """Safely evaluates a string as a Python literal."""
-    try: return ast.literal_eval(s)
+    """Safely evaluates a string as a Python literal, removing backslashes."""
+    try:
+        # Remove backslashes before evaluation
+        s = s.replace("\\", "")
+        return ast.literal_eval(s)
     except (SyntaxError, ValueError):
         logging.error(f"Error evaluating: {s}")
         return default
@@ -133,7 +136,18 @@ def clean_up(loc_dic):
     try:
         with open(loc_dic, 'r', encoding='utf-8') as f:
             loaded_data = json.load(f)
-        return {key: clean(value) for key, value in loaded_data.items()}
+
+        # Remove backslashes from string values before further processing
+        cleaned_data = {}
+        for key, value in loaded_data.items():
+            if isinstance(value, str):
+                cleaned_data[key] = clean(value.replace("\\", ""))
+            elif isinstance(value, list):  # Handle lists of strings
+                 cleaned_data[key] = [clean(item.replace("\\","")) if isinstance(item,str) else item for item in value ]
+            else:
+                cleaned_data[key] = clean(value)  # Apply clean to other types as needed
+
+        return cleaned_data
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logging.error(f"Error loading/cleaning JSON: {e}")
         return {}
@@ -147,39 +161,46 @@ def update_document(output_dic, name, assessor, gender, program):
         return None
 
     # --- Static Content (still using dedicated functions) ---
-    add_content_detailstable(doc, [name, "", program, "", ""])  # Keep
-    replace_and_format_header_text(doc, name) # Keep
-    replace_placeholder_in_docx(doc, '***', name.split()[0], font_name='Montserrat Light') #keep
-    replace_placeholder_in_docx(doc, 'ASSESSOR', assessor.upper(), font_name='Montserrat Light') # Keep
+    add_content_detailstable(doc, [name, "", program, "", ""])
+    replace_and_format_header_text(doc, name)
+    replace_placeholder_in_docx(doc, '***', name.split()[0], font_name='Montserrat Light')
+    replace_placeholder_in_docx(doc, 'ASSESSOR', assessor.upper(), font_name='Montserrat Light')
 
     # --- Dynamic Content (using find_and_replace_placeholder) ---
+    #  'prompt6a_conqual' and 'prompt6b_conimprov' are now handled by conclusion()
     dynamic_prompts = [
         'prompt2_firstimpr', 'prompt3_personality',
-        'prompt4_cogcap_remarks', 'prompt6a_conqual',
-        'prompt6b_conimprov', 'prompt9_interests'
+        'prompt4_cogcap_remarks'
     ]
 
     for prompt_key in dynamic_prompts:
         replacement = output_dic.get(prompt_key, "")
-        if prompt_key in ['prompt2_firstimpr','prompt3_personality']:
-            replacement = replacePiet(replacement,name, gender) # Apply replacePiet where needed.
-
+        if prompt_key in ['prompt2_firstimpr', 'prompt3_personality', 'prompt4_cogcap_remarks']:
+            replacement = replacePiet(replacement, name, gender)
         find_and_replace_placeholder(doc, f"{{{prompt_key}}}", replacement)
 
-    # ---  Content that remains in tables/specific locations ---
-    add_content_cogcaptable(doc, output_dic.get('prompt4_cogcap_scores', "[]")) # Keep
-    language_skills(doc, output_dic.get('prompt5_language', "[]"))  # Keep
+    # --- Table/Specific Location Content ---
+    add_content_cogcaptable(doc, output_dic.get('prompt4_cogcap_scores', "[]"))
+    language_skills(doc, output_dic.get('prompt5_language', "[]"))
 
-    # Profile review (icons) - Keep, but add safety checks
+    # --- Conclusion Table ---
+    conclusion(doc, 0, output_dic.get('prompt6a_conqual', "[]"))  # Strengths to column 0
+    conclusion(doc, 1, output_dic.get('prompt6b_conimprov', "[]"))  # Improvements to column 1
+
+        # --- Interests ---
+    interests_str = output_dic.get('prompt9_interests', "")
+    add_interests_table(doc, interests_str)
+
+    # Profile review (icons)
     qual_scores_str = output_dic.get('prompt7_qualscore_data', "[]")
     qual_scores = _safe_literal_eval(qual_scores_str, [])
     if isinstance(qual_scores, list) and len(qual_scores) >= 23:
-        add_icons_data_chief(doc, qual_scores[:18])  # First 18
-        add_icons_data_chief_2(doc, qual_scores[18:23])  # Remaining
+        add_icons_data_chief(doc, qual_scores[:18])
+        add_icons_data_chief_2(doc, qual_scores[18:23])
     else:
         logging.warning("Invalid qual_scores data.")
 
-    # Data tools (icons) - Keep
+    # Data tools (icons)
     data_tools_str = output_dic.get('prompt8_datatools', "[]")
     data_tools_scores = _safe_literal_eval(data_tools_str, [])
     if isinstance(data_tools_scores, list):
@@ -197,10 +218,7 @@ def update_document(output_dic, name, assessor, gender, program):
     except Exception as e:
         logging.error(f"Failed to save document: {e}")
         return None
-# --- (rest of your helper functions from the previous robust version) ---
-# ... (All helper functions: _safe_get_table, _safe_get_cell, _safe_set_text, _safe_literal_eval) ...
-# ... (All the table/icon functions: add_content_detailstable, add_content_cogcaptable, language_skills,
-#      add_icons_data_chief, add_icons_data_chief_2, add_icons_data_tools, conclusion, etc. -  from the previous robust version) ...
+
 def format_datatools_output(datatools_json_string):
     """Formats data tools output from JSON string."""
     try:
@@ -262,7 +280,6 @@ def restructure_date(date_str):
             return date_obj.strftime('%d-%m-%Y')
         except ValueError:
             return ''
-
 
 
 def add_content_detailstable(doc, personal_details):
@@ -433,7 +450,6 @@ def add_icons_data_tools(doc, list_scores):
             add_icon_to_cell(cell, list_scores[i])
 
 
-
 def add_icon_to_cell(cell, score):
     """Adds an icon based on the score to a cell."""
     if not isinstance(score, int):
@@ -457,57 +473,53 @@ def add_icon_to_cell(cell, score):
         logging.warning(f"Invalid score value: {score}")
 
 def add_interests_table(doc, interests_text):
-    """Fills in interests into the Interests Table."""
+    """Fills in interests into the Interests Table as comma-separated text, handling strings directly."""
     table = _safe_get_table(doc, INTERESTS_TABLE_INDEX)
     if not table:
         return
 
-    list_items = _safe_literal_eval(interests_text, [])
-    if not isinstance(list_items, list):
-        # Fallback to comma-separated string parsing if eval fails
-        if isinstance(interests_text, str):
-            list_items = [item.strip() for item in interests_text.split(',')]
-        else:
-            logging.warning("interests_text is neither a valid list string nor a string.")
-            list_items = [] # Set to empty.
+    # --- Key Changes Here ---
+    if isinstance(interests_text, str):
+        # Remove brackets and any extra whitespace, then split by comma
+        interests_list = [s.strip() for s in interests_text.strip("[]").split(",") if s.strip()]
+        # Remove quotes around each interest
+        interests_list = [s.strip('"').strip("'") for s in interests_list]
+        interests_string = ', '.join(interests_list)
+    else:
+        logging.warning("interests_text is not a string.")
+        interests_string = ""
 
-    # Clear existing content rows (skip header row)
-    for row_index in reversed(range(1, len(table.rows))):
-        table.rows[row_index]._element.getparent().remove(table.rows[row_index]._element)
 
-    for point in list_items:
-        if not isinstance(point, str):
-            logging.warning(f"Skipping non-string interest point: {point}")
-            continue  # Skip non-string points
-
-        new_row_cells = table.add_row().cells
-        cell = new_row_cells[0]
-        _safe_set_text(cell, point)
+    # Get the first cell of the interests table
+    cell = _safe_get_cell(table, 1, 0)  # Assuming interests are in the second row, first column
+    if cell:
+        _safe_set_text(cell, interests_string)
+    else:
+        logging.warning("Could not find cell to add interests text.")
 
 
 def conclusion(doc, column, list_items):
-    """Adds conclusion bullet points to the specified column."""
+    """Adds conclusion bullet points to the specified column, handling lists directly."""
     table = _safe_get_table(doc, CONCLUSION_TABLE_INDEX)
     if not table:
         return
 
-    if not isinstance(list_items, str):
-        logging.warning("list_items should be a string (JSON representation of list)")
-        return
-    list_items_clean = _safe_literal_eval(list_items, []) # Default
+    # Directly use the output of _safe_literal_eval
+    if isinstance(list_items, str):  # If it's still a string, try to evaluate
+        list_items = _safe_literal_eval(list_items, [])
 
-    if not isinstance(list_items_clean, list):
-        logging.warning("list_items could not be parsed as list")
+    if not isinstance(list_items, list):
+        logging.warning("list_items could not be parsed as a list")
         return
 
     cell = _safe_get_cell(table, 1, column)
     if not cell:
         return
-    _safe_set_text(cell, "") # Clear existing content
+    _safe_set_text(cell, "")  # Clear existing content
 
-    for point in list_items_clean:
+    for point in list_items:
         if isinstance(point, str):
-            _safe_add_paragraph(cell, f'\t -{point}') #Use safe function
+            _safe_add_paragraph(cell, f'\t -{point}')  # Use safe function
 
 
 # Last style improvements
