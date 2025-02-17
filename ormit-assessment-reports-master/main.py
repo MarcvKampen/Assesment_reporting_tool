@@ -160,7 +160,7 @@ class MainWindow(QWidget):
 
         # File selection buttons
         self.selected_files = {}  # Dictionary to store the full file paths
-        self.file_browser_btn = QPushButton('PAPI Feedback')
+        self.file_browser_btn = QPushButton('PAPI Gebruikersrapport')
         self.file_browser_btn.clicked.connect(lambda: self.open_file_dialog(1))
         layout.addWidget(self.file_browser_btn, 6, 0)
         layout.addWidget(self.file_label1, 6, 1, 1, 3)
@@ -204,7 +204,7 @@ class MainWindow(QWidget):
                 selected_file = str(filenames[0])
                 if file_index == 1:
                     self.file_label1.setText(os.path.basename(selected_file))
-                    self.selected_files["PAPI Feedback"] = selected_file  # Store the full path
+                    self.selected_files["PAPI Gebruikersrapport"] = selected_file  # Store the full path
                 elif file_index == 2:
                     self.file_label2.setText(os.path.basename(selected_file))
                     self.selected_files["Cog. Test"] = selected_file
@@ -231,7 +231,7 @@ class MainWindow(QWidget):
             "Gender": self.combo_title.currentText(),
             "Traineeship": self.combo_title2.currentText(),
             "Files": {
-                "PAPI Feedback": self.selected_files.get("PAPI Feedback", ""),
+                "PAPI Gebruikersrapport": self.selected_files.get("PAPI Gebruikersrapport", ""),
                 "Cog. Test": self.selected_files.get("Cog. Test", ""),
                 "Assessment Notes": self.selected_files.get("Assessment Notes", "")
             }
