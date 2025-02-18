@@ -10,7 +10,6 @@ import json
 import re
 import logging
 
-# --- Configure Logging ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -18,14 +17,13 @@ logging.basicConfig(
     filemode="a"
 )
 
-# --- Constants ---
 DETAILS_TABLE_INDEX = 0
 COGCAP_TABLE_INDEX = 1
 CONCLUSION_TABLE_INDEX = 2
 FIRST_ICONS_TABLE = 4
 NUM_ICONS_TABLES = 5
 ITEMS_PER_ICON_TABLE = 4
-LANGUAGE_SKILLS_TABLE_INDEX = 14 # Adjust as needed
+LANGUAGE_SKILLS_TABLE_INDEX = 13 # This is no longer used for table index
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and PyInstaller."""
@@ -35,21 +33,18 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# --- Helper Functions ---
-# (The same helper functions as in write_report_data.py:
-#  _safe_get_table, _safe_get_cell, _safe_set_text, _safe_add_paragraph,
-#  _safe_literal_eval, find_and_replace_placeholder)
-
 def _safe_get_table(doc, table_index, default=None):
     """Safely retrieves a table."""
-    try: return doc.tables[table_index]
+    try:
+        return doc.tables[table_index]
     except IndexError:
         logging.warning(f"Table {table_index} not found.")
         return default
 
 def _safe_get_cell(table, row_index, col_index, default=None):
     """Safely retrieves a cell."""
-    try: return table.cell(row_index, col_index)
+    try:
+        return table.cell(row_index, col_index)
     except IndexError:
         logging.warning(f"Cell ({row_index}, {col_index}) not found.")
         return default
@@ -66,8 +61,8 @@ def _safe_set_text(cell, text):
         run.font.size = Pt(10)
 
 def _safe_add_paragraph(cell, text):
-     """ Safely add paragraphs """
-     if cell:
+    """Safely add paragraphs"""
+    if cell:
         paragraph = cell.add_paragraph(text)
         run = paragraph.runs[0]
         run.font.name = 'Montserrat Light'
@@ -91,20 +86,19 @@ def _safe_literal_eval(s, default=None):
     except (SyntaxError, ValueError) as e:
         logging.error(f"Error evaluating string: {s} - {e}")
         return default
+
 def find_and_replace_placeholder(doc, placeholder, replacement_text, font_name='Montserrat Light', font_size=10):
-    """Finds and replaces a placeholder in the document (paragraphs and tables)."""
-    placeholder_found = False  # Flag
+    """Finds and replaces ALL occurrences of a placeholder in the document (paragraphs and tables)."""
+    placeholder_found = False
 
     # 1. Search Paragraphs
     for paragraph in doc.paragraphs:
-        if placeholder in paragraph.text:
-            placeholder_found = True
-            # Replace text in runs, preserving existing runs (and their formatting)
-            for run in paragraph.runs:
-                if placeholder in run.text:
-                    run.text = run.text.replace(placeholder, str(replacement_text))
-                    run.font.name = font_name
-                    run.font.size = Pt(font_size)
+        for run in paragraph.runs: # Iterate through runs in each paragraph
+            if placeholder in run.text:
+                placeholder_found = True
+                run.text = run.text.replace(placeholder, str(replacement_text))
+                run.font.name = font_name
+                run.font.size = Pt(font_size)
 
     # 2. Search Tables
     for table in doc.tables:
@@ -149,8 +143,8 @@ def update_document(output_dic, name, assessor, gender, program):
     # --- Static Content ---
     add_content_detailstable(doc, [name, "", program, "", ""])
     replace_and_format_header_text(doc, name)
-    replace_placeholder_in_docx(doc, '***', name.split()[0], 'Montserrat Light')
-    replace_placeholder_in_docx(doc, 'ASSESSOR', assessor.upper(), 'Montserrat Light')
+    find_and_replace_placeholder(doc, '***', name.split()[0], 'Montserrat Light') # Using find_and_replace_placeholder
+    find_and_replace_placeholder(doc, 'ASSESSOR', assessor.upper(), 'Montserrat Light') # Using find_and_replace_placeholder
 
     # --- Dynamic Content ---
     dynamic_prompts = [
@@ -160,14 +154,14 @@ def update_document(output_dic, name, assessor, gender, program):
     ]
     for prompt_key in dynamic_prompts:
       replacement = output_dic.get(prompt_key, "")
-      if prompt_key in ['prompt2_firstimpr','prompt3_personality']:
+      if prompt_key in ['prompt2_firstimpr','prompt3_personality','prompt4_cogcap_remarks']:
           replacement = replacePiet(replacement,name, gender) # Apply replacePiet
       find_and_replace_placeholder(doc, f"{{{prompt_key}}}", replacement)
 
 
-    # ---  Content that remains in tables/specific locations ---
+    # ---  Content that remains in specific locations (no longer tables for language skills) ---
     add_content_cogcaptable(doc, output_dic.get('prompt4_cogcap_scores', "[]"))
-    language_skills(doc, output_dic.get('prompt5_language', "[]"))
+    language_skills(doc, output_dic.get('prompt5_language', "[]"), doc) # Pass doc object
 
     # Profile review (icons)
     qual_scores_str = output_dic.get('prompt7_qualscore', "[]")
@@ -177,6 +171,11 @@ def update_document(output_dic, name, assessor, gender, program):
             add_icons2(doc, qual_scores)  # Use the MCP version
     else:
         logging.warning("Invalid qual_scores data.")
+
+    # --- Conclusion Table ---
+    conclusion(doc, 0, output_dic.get('prompt6a_conqual', "[]"))  # Strengths to column 0
+    conclusion(doc, 1, output_dic.get('prompt6b_conimprov', "[]"))  # Improvements to column 1
+
 
     # --- Save Document ---
     current_time = datetime.now()
@@ -370,25 +369,22 @@ def add_content_cogcaptable_remark(doc, cogcap_output):
 
     _safe_set_text(remark_cell, cogcap_output)
 
-def language_skills(doc, replacements_str):
-    """Fills in language skills."""
+def language_skills(doc, replacements_str, doc_obj): # Modified to accept doc object
+    """Fills in language skills by replacing placeholders in paragraphs."""
     replacements = _safe_literal_eval(replacements_str, [])
     if not isinstance(replacements, list):
         logging.warning("Replacements is not a list.")
-        return
-
-    table = _safe_get_table(doc, LANGUAGE_SKILLS_TABLE_INDEX)
-    if not table:
         return
 
     language_names = ["Dutch", "French", "English"]
     for index, language_name in enumerate(language_names):
         if index < len(replacements):
             proficiency_level = replacements[index]
-            cell = _safe_get_cell(table, index + 2, 0)
-            _safe_set_text(cell, proficiency_level)
+            placeholder = f"{{prompt5_language_{language_name.lower()}}}" # Placeholder per language
+            find_and_replace_placeholder(doc_obj, placeholder, proficiency_level) # Using find_and_replace_placeholder
         else:
             logging.warning(f"No proficiency level provided for {language_name}.")
+
 
 def add_icons2(doc, list_scores):
     """Adds icons to the profile review tables (MCP version)."""
@@ -435,7 +431,7 @@ def add_icon_to_cell(cell, score):
         logging.warning(f"Invalid score value: {score}")
 
 def conclusion(doc, column, list_items_str):
-    """Adds conclusion bullet points."""
+    """Adds conclusion bullet points, removing brackets and quotes."""
     table = _safe_get_table(doc, CONCLUSION_TABLE_INDEX)
     if not table:
         return
@@ -449,9 +445,23 @@ def conclusion(doc, column, list_items_str):
     if not cell:
         return
 
-    _safe_set_text(cell, "")
+    _safe_set_text(cell, "") # Clear cell content
 
-    for point in list_items:
+    # --- Cleaning logic from the other script adapted here ---
+    if isinstance(list_items, list):
+        cleaned_items = []
+        for item in list_items:
+            if isinstance(item, str):
+                cleaned_item = item.strip('"').strip("'") # Remove leading/trailing quotes
+                cleaned_items.append(cleaned_item)
+            else:
+                cleaned_items.append(item) # Keep non-string items as they are
+        list_points = cleaned_items
+    else: # Fallback in case list_items is not a list after all (shouldn't happen)
+        list_points = list_items
+
+
+    for point in list_points:
         if isinstance(point, str):
             _safe_add_paragraph(cell, f'\t -{point}')
 
@@ -473,7 +483,7 @@ def replace_and_format_header_text(doc, new_text):
                     rFonts.set(qn('w:hAnsi'), 'Montserrat SemiBold')
                     run._element.rPr.append(rFonts)
 
-def replace_placeholder_in_docx(doc, placeholder, replacement, font_name='Montserrat', font_size=10):
+def replace_placeholder_docx(doc, placeholder, replacement, font_name='Montserrat', font_size=10): # corrected function name
     """Replaces placeholders with custom font."""
     for paragraph in doc.paragraphs:
         if placeholder in paragraph.text:
